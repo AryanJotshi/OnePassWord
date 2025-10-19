@@ -1,0 +1,24 @@
+{
+  "name": "onepassword-backend",
+  "version": "1.0.0",
+  "description": "Zero-knowledge password manager backend",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "NODE_ENV=production node server.js"
+  },
+  "keywords": [
+    "password-manager",
+    "zero-knowledge",
+    "encryption"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.78.0",
+    "dotenv": "^16.3.1",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2"
+  }
+}
