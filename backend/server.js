@@ -1,4 +1,5 @@
-// server.js - Minimal Express server, loads .env, prepares JWT authentication
+// server.js - Minimal Express server, loads .env, prepares JWT authentication.
+// NOTE: Items API now uses normalized schema: separate `items` and `password_entries` tables.
 require('dotenv').config();
 // Prefer IPv4 to avoid undici fetch failures when IPv6 is misconfigured
 try { require('dns').setDefaultResultOrder('ipv4first'); } catch { }
@@ -31,7 +32,7 @@ app.get('/api/health', (req, res) => {
 
 const usersRouter = require('./api/users');
 const vaultsRouter = require('./api/vaults');
-const itemsRouter = require('./api/items');
+const itemsRouter = require('./api/items'); // normalized join/flatten responses
 const auditRouter = require('./api/audit');
 const adminRouter = require('./api/admin');
 

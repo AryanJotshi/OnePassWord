@@ -3,6 +3,7 @@ const router = express.Router();
 const { supa } = require('../supa');
 
 async function getAppUser(supabase_user_id) {
+  // SQL: SELECT * FROM users WHERE supabase_user_id = $1;
   const { data, error } = await supa.from('users').select('*').eq('supabase_user_id', supabase_user_id);
   if (error) throw error;
   return data && data[0];
@@ -15,6 +16,7 @@ router.get('/', async (req, res) => {
     const appUser = await getAppUser(suid);
     if (!appUser) return res.status(401).json({ error: 'App user not found' });
     if (appUser.role === 'superadmin') {
+      // SQL: SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 500;
       const { data, error } = await supa
         .from('audit_logs')
         .select('*')
@@ -23,6 +25,7 @@ router.get('/', async (req, res) => {
       if (error) throw error;
       return res.json(data || []);
     } else {
+      // SQL: SELECT * FROM audit_logs WHERE user_id = $1 ORDER BY timestamp DESC LIMIT 200;
       const { data, error } = await supa
         .from('audit_logs')
         .select('*')
@@ -46,6 +49,7 @@ router.post('/', async (req, res) => {
   try {
     const appUser = await getAppUser(suid);
     if (!appUser) return res.status(401).json({ error: 'App user not found' });
+    // SQL: INSERT INTO audit_logs (vault_id, user_id, item_id, action) VALUES ($1, $2, $3, $4) RETURNING *;
     const { data, error } = await supa
       .from('audit_logs')
       .insert([{ vault_id: vault_id || null, user_id: appUser.id, item_id: item_id || null, action }])

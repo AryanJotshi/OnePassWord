@@ -11,27 +11,51 @@ async function authHeader() {
 export async function apiGet(path) {
   const headers = await authHeader();
   const res = await fetch(`${BASE_URL}${path}`, { headers });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const text = await res.text();
+    const err = new Error(text || res.statusText);
+    err.status = res.status;
+    try { err.body = JSON.parse(text); } catch {}
+    throw err;
+  }
   return res.json();
 }
 
 export async function apiPost(path, body) {
   const headers = { 'Content-Type': 'application/json', ...(await authHeader()) };
   const res = await fetch(`${BASE_URL}${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const text = await res.text();
+    const err = new Error(text || res.statusText);
+    err.status = res.status;
+    try { err.body = JSON.parse(text); } catch {}
+    throw err;
+  }
   return res.json();
 }
 
 export async function apiDelete(path) {
   const headers = await authHeader();
   const res = await fetch(`${BASE_URL}${path}`, { method: 'DELETE', headers });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const text = await res.text();
+    const err = new Error(text || res.statusText);
+    err.status = res.status;
+    try { err.body = JSON.parse(text); } catch {}
+    throw err;
+  }
   return true;
 }
 
 export async function apiPatch(path, body) {
   const headers = { 'Content-Type': 'application/json', ...(await authHeader()) };
   const res = await fetch(`${BASE_URL}${path}`, { method: 'PATCH', headers, body: JSON.stringify(body) });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const text = await res.text();
+    const err = new Error(text || res.statusText);
+    err.status = res.status;
+    try { err.body = JSON.parse(text); } catch {}
+    throw err;
+  }
   return res.json();
 }

@@ -3,6 +3,7 @@ const router = express.Router();
 const { supa } = require('../supa');
 
 async function getAppUser(supabase_user_id) {
+  // SQL: SELECT * FROM users WHERE supabase_user_id = $1;
   const { data, error } = await supa.from('users').select('*').eq('supabase_user_id', supabase_user_id);
   if (error) throw error;
   return data && data[0];
@@ -13,50 +14,67 @@ router.get('/metrics', async (req, res) => {
   try {
     const appUser = await getAppUser(req.user.sub);
     if (!appUser || appUser.role !== 'superadmin') return res.status(403).json({ error: 'Forbidden' });
-    // time window
+
     const now = new Date();
     const since30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    // Fetch data sets
-    const [{ data: users, error: uErr }, { data: vaults, error: vErr }, { data: items, error: iErr }, { data: audits, error: aErr }] = await Promise.all([
+    // Fetch core tables
+    // SQL: SELECT id, created_at, role, username FROM users;
+    // SQL: SELECT vault_id, user_id, created_at FROM vaults;
+    // SQL: SELECT item_id, vault_id, item_type, date_created FROM items;
+    // SQL: SELECT timestamp, user_id, action FROM audit_logs;
+    // SQL: SELECT item_id, encrypted_website, encrypted_username, encrypted_password FROM password_entries;
+    const [usersResp, vaultsResp, itemsResp, auditsResp, peResp] = await Promise.all([
       supa.from('users').select('id, created_at, role, username'),
       supa.from('vaults').select('vault_id, user_id, created_at'),
-      supa.from('password_entries').select('item_id, vault_id, date_created'),
-      supa.from('audit_logs').select('timestamp, user_id, action')
+      supa.from('items').select('item_id, vault_id, item_type, date_created'),
+      supa.from('audit_logs').select('timestamp, user_id, action'),
+      supa.from('password_entries').select('item_id, encrypted_website, encrypted_username, encrypted_password')
     ]);
-    if (uErr) throw uErr; if (vErr) throw vErr; if (iErr) throw iErr; if (aErr) throw aErr;
+    if (usersResp.error) throw usersResp.error;
+    if (vaultsResp.error) throw vaultsResp.error;
+    if (itemsResp.error) throw itemsResp.error;
+    if (auditsResp.error) throw auditsResp.error;
+    if (peResp.error) throw peResp.error;
+
+    const users = usersResp.data || [];
+    const vaults = vaultsResp.data || [];
+    const items = itemsResp.data || [];
+    const audits = auditsResp.data || [];
+    const passwordEntries = peResp.data || [];
+
+    const peMap = new Map();
+    for (const p of passwordEntries) peMap.set(p.item_id, p);
 
     function bucketByDay(rows, field, since = since30) {
       const m = new Map();
-      for (const r of rows || []) {
+      for (const r of rows) {
         const d = new Date(r[field]);
         if (isNaN(d.getTime()) || d < since) continue;
         const key = d.toISOString().slice(0, 10);
         m.set(key, (m.get(key) || 0) + 1);
       }
-      return Array.from(m.entries()).sort(([a], [b]) => a < b ? -1 : 1).map(([day, count]) => ({ day, count }));
+      return Array.from(m.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([day, count]) => ({ day, count }));
     }
 
     // Totals
     const totals = {
-      users: users?.length || 0,
-      vaults: vaults?.length || 0,
-      items: items?.length || 0,
-      auditEvents: audits?.length || 0
+      users: users.length,
+      vaults: vaults.length,
+      items: items.length,
+      passwordEntries: passwordEntries.length,
+      auditEvents: audits.length
     };
 
-    // Distribution: vaults per user
-    const vaultsPerUserMap = new Map();
-    for (const v of vaults || []) {
-      vaultsPerUserMap.set(v.user_id, (vaultsPerUserMap.get(v.user_id) || 0) + 1);
-    }
-    const vaultsPerUser = Array.from(vaultsPerUserMap.entries()).map(([user_id, count]) => ({ user_id, count })).sort((a, b) => b.count - a.count).slice(0, 15);
+    // Role breakdown
+    const roles = users.reduce((acc, u) => { acc[u.role] = (acc[u.role] || 0) + 1; return acc; }, {});
 
-    // Items per vault (summary)
+    // Items type breakdown
+    const itemTypeCounts = items.reduce((acc, it) => { acc[it.item_type] = (acc[it.item_type] || 0) + 1; return acc; }, {});
+
+    // Items per vault
     const itemsPerVaultMap = new Map();
-    for (const it of items || []) {
-      itemsPerVaultMap.set(it.vault_id, (itemsPerVaultMap.get(it.vault_id) || 0) + 1);
-    }
+    for (const it of items) itemsPerVaultMap.set(it.vault_id, (itemsPerVaultMap.get(it.vault_id) || 0) + 1);
     const itemsPerVaultTop = Array.from(itemsPerVaultMap.entries()).map(([vault_id, count]) => ({ vault_id, count })).sort((a, b) => b.count - a.count).slice(0, 15);
     const itemsCounts = Array.from(itemsPerVaultMap.values());
     const itemsStats = itemsCounts.length ? {
@@ -65,39 +83,45 @@ router.get('/metrics', async (req, res) => {
       min: Math.min(...itemsCounts)
     } : { avg: 0, max: 0, min: 0 };
 
-    // Role breakdown
-    const roles = users?.reduce((acc, u) => { acc[u.role] = (acc[u.role] || 0) + 1; return acc; }, {}) || {};
+    // Vaults per user
+    const vaultsPerUserMap = new Map();
+    for (const v of vaults) vaultsPerUserMap.set(v.user_id, (vaultsPerUserMap.get(v.user_id) || 0) + 1);
+    const vaultsPerUser = Array.from(vaultsPerUserMap.entries()).map(([user_id, count]) => ({ user_id, count })).sort((a, b) => b.count - a.count).slice(0, 15);
 
-    // Activity by day and by action
-    const eventsPerDay = bucketByDay(audits || [], 'timestamp');
-    const vaultsPerDay = bucketByDay(vaults || [], 'created_at');
-    const itemsPerDay = bucketByDay(items || [], 'date_created');
-    const actionsMap = new Map();
-    for (const ev of audits || []) {
-      const a = ev.action || 'unknown';
-      actionsMap.set(a, (actionsMap.get(a) || 0) + 1);
+    // Password entry field presence stats
+    let withWebsite = 0, withUsername = 0, withPasswordCipher = 0;
+    for (const p of passwordEntries) {
+      if (p.encrypted_website) withWebsite++;
+      if (p.encrypted_username) withUsername++;
+      if (p.encrypted_password) withPasswordCipher++;
     }
+    const passwordEntryFieldStats = { withWebsite, withUsername, withPasswordCipher };
+
+    // Activity series
+    const vaultsPerDay = bucketByDay(vaults, 'created_at');
+    const itemsPerDay = bucketByDay(items, 'date_created');
+    const eventsPerDay = bucketByDay(audits, 'timestamp');
+
+    // Actions breakdown
+    const actionsMap = new Map();
+    for (const ev of audits) actionsMap.set(ev.action || 'unknown', (actionsMap.get(ev.action || 'unknown') || 0) + 1);
     const actions = Array.from(actionsMap.entries()).map(([action, count]) => ({ action, count })).sort((a, b) => b.count - a.count);
 
     // Top active users by events
     const eventsByUserMap = new Map();
-    for (const ev of audits || []) {
-      if (!ev.user_id) continue;
-      eventsByUserMap.set(ev.user_id, (eventsByUserMap.get(ev.user_id) || 0) + 1);
-    }
+    for (const ev of audits) { if (ev.user_id) eventsByUserMap.set(ev.user_id, (eventsByUserMap.get(ev.user_id) || 0) + 1); }
     const topUsersByEvents = Array.from(eventsByUserMap.entries()).map(([user_id, count]) => ({ user_id, count })).sort((a, b) => b.count - a.count).slice(0, 15);
 
     // Recent events
-    const recentEvents = (audits || [])
-      .slice()
-      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-      .slice(0, 50);
+    const recentEvents = audits.slice().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 50);
 
     res.json({
       totals,
       roles,
+      itemTypes: itemTypeCounts,
       series: { vaultsPerDay, itemsPerDay, eventsPerDay },
       distributions: { vaultsPerUser, itemsPerVaultTop, itemsStats },
+      passwordEntryFieldStats,
       actions,
       topUsersByEvents,
       recentEvents

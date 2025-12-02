@@ -161,7 +161,8 @@ export default function VaultPage({ vault, goBack }) {
       const eUser = username ? await aesGcmEncrypt(username, key) : null;
       const ePass = await aesGcmEncrypt(password, key);
       const body = {
-        item_type: 'website',
+        // schema expects 'password' not 'website'
+        item_type: 'password',
         encrypted_label: JSON.stringify(eLabel),
         encrypted_website: eWeb ? JSON.stringify(eWeb) : null,
         encrypted_username: eUser ? JSON.stringify(eUser) : null,

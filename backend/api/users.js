@@ -9,6 +9,7 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields' });
   }
   try {
+    // SQL: SELECT id FROM users WHERE supabase_user_id = $1;
     const { data: existing, error: selErr } = await supa
       .from('users')
       .select('id')
@@ -17,6 +18,7 @@ router.post('/register', async (req, res) => {
     if (existing && existing.length > 0) {
       return res.status(409).json({ error: 'User already exists' });
     }
+    // SQL: INSERT INTO users (supabase_user_id, username, role) VALUES ($1, LOWER($2), $3);
     const { error: insErr } = await supa
       .from('users')
       .insert([{ supabase_user_id, username: username.toLowerCase(), role }]);
@@ -32,6 +34,7 @@ router.post('/register', async (req, res) => {
 router.get('/me', async (req, res) => {
   try {
     const supabase_user_id = req.user.sub;
+    // SQL: SELECT username, role FROM users WHERE supabase_user_id = $1 LIMIT 1;
     const { data, error } = await supa
       .from('users')
       .select('username,role')
@@ -53,6 +56,7 @@ router.delete('/me', async (req, res) => {
   try {
     const supabase_user_id = req.user.sub;
     // Find app user id for auditing (optional)
+    // SQL: SELECT id FROM users WHERE supabase_user_id = $1 LIMIT 1;
     const { data: users, error: selErr } = await supa
       .from('users')
       .select('id')
@@ -63,6 +67,7 @@ router.delete('/me', async (req, res) => {
 
     // Delete Supabase auth user (requires service key privileges)
     try {
+      // No direct SQL; Supabase Auth Admin API call: deleteUser(supabase_user_id)
       await supa.auth.admin.deleteUser(supabase_user_id);
     } catch (e) {
       // If auth deletion fails (e.g., not found), continue with app cleanup
@@ -70,6 +75,7 @@ router.delete('/me', async (req, res) => {
     }
 
     // Delete from app users table; cascades will remove vaults/items
+    // SQL: DELETE FROM users WHERE supabase_user_id = $1;
     const { error: delErr } = await supa
       .from('users')
       .delete()

@@ -65,6 +65,7 @@ export default function Admin() {
               <li>Users: {metrics?.totals?.users ?? 0}</li>
               <li>Vaults: {metrics?.totals?.vaults ?? 0}</li>
               <li>Items: {metrics?.totals?.items ?? 0}</li>
+              <li>Password entries: {metrics?.totals?.passwordEntries ?? 0}</li>
               <li>Audit events: {metrics?.totals?.auditEvents ?? 0}</li>
             </ul>
             <h5 className="mt-3 text-sm font-semibold">Roles</h5>
@@ -72,6 +73,18 @@ export default function Admin() {
               {Object.entries(metrics?.roles || {}).map(([role, count]) => (
                 <li key={role}>{role}: {count}</li>
               ))}
+            </ul>
+            <h5 className="mt-3 text-sm font-semibold">Item types</h5>
+            <ul className="list-inside list-disc text-sm">
+              {Object.entries(metrics?.itemTypes || {}).map(([t, c]) => (
+                <li key={t}>{t}: {c}</li>
+              ))}
+            </ul>
+            <h5 className="mt-3 text-sm font-semibold">Password entry fields</h5>
+            <ul className="list-inside list-disc text-sm">
+              <li>With website: {metrics?.passwordEntryFieldStats?.withWebsite ?? 0}</li>
+              <li>With username: {metrics?.passwordEntryFieldStats?.withUsername ?? 0}</li>
+              <li>With password cipher: {metrics?.passwordEntryFieldStats?.withPasswordCipher ?? 0}</li>
             </ul>
           </div>
 

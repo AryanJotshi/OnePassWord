@@ -3,6 +3,7 @@ const router = express.Router();
 const { supa } = require('../supa');
 
 async function getAppUser(supabase_user_id) {
+  // SQL: SELECT * FROM users WHERE supabase_user_id = $1;
   const { data, error } = await supa
     .from('users')
     .select('*')
@@ -18,18 +19,22 @@ router.get('/', async (req, res) => {
     const appUser = await getAppUser(suid);
     if (!appUser) return res.status(401).json({ error: 'App user not found' });
     if (appUser.role === 'superadmin') {
+      // SQL: SELECT vault_id, user_id, vault_name, created_at, updated_at FROM vaults;
       const { data, error } = await supa
         .from('vaults')
         .select('vault_id,user_id,vault_name,created_at,updated_at');
       if (error) throw error;
+      // SQL: INSERT INTO audit_logs (user_id, action) VALUES ($1, 'vaults_listed_admin');
       await supa.from('audit_logs').insert([{ user_id: appUser.id, action: 'vaults_listed_admin' }]);
       return res.json(data || []);
     } else {
+      // SQL: SELECT vault_id, user_id, vault_name, created_at, updated_at FROM vaults WHERE user_id = $1;
       const { data, error } = await supa
         .from('vaults')
         .select('vault_id,user_id,vault_name,created_at,updated_at')
         .eq('user_id', appUser.id);
       if (error) throw error;
+      // SQL: INSERT INTO audit_logs (user_id, action) VALUES ($1, 'vaults_listed');
       await supa.from('audit_logs').insert([{ user_id: appUser.id, action: 'vaults_listed' }]);
       return res.json(data || []);
     }
@@ -49,12 +54,14 @@ router.post('/', async (req, res) => {
   try {
     const appUser = await getAppUser(suid);
     if (!appUser) return res.status(401).json({ error: 'App user not found' });
+    // SQL: INSERT INTO vaults (user_id, vault_name, encrypted_vault_key, salt) VALUES ($1, $2, $3, $4) RETURNING *;
     const { data, error } = await supa
       .from('vaults')
       .insert([{ user_id: appUser.id, vault_name, encrypted_vault_key, salt }])
       .select()
       .single();
     if (error) throw error;
+    // SQL: INSERT INTO audit_logs (vault_id, user_id, action) VALUES ($1, $2, 'vault_created');
     await supa.from('audit_logs').insert([{ vault_id: data.vault_id, user_id: appUser.id, action: 'vault_created' }]);
     res.status(201).json(data);
   } catch (err) {
@@ -70,11 +77,13 @@ router.get('/:vaultId', async (req, res) => {
   try {
     const appUser = await getAppUser(suid);
     if (!appUser) return res.status(401).json({ error: 'App user not found' });
+    // SQL: SELECT * FROM vaults WHERE vault_id = $1;
     const { data, error } = await supa.from('vaults').select('*').eq('vault_id', vaultId);
     if (error) throw error;
     const v = data && data[0];
     if (!v) return res.status(404).json({ error: 'Vault not found' });
     if (appUser.role === 'superadmin') {
+      // SQL: SELECT vault_id, user_id, vault_name, created_at, updated_at FROM vaults WHERE vault_id = $1 LIMIT 1;
       return res.json({ vault_id: v.vault_id, user_id: v.user_id, vault_name: v.vault_name, created_at: v.created_at, updated_at: v.updated_at });
     }
     if (v.user_id !== appUser.id) return res.status(403).json({ error: 'Forbidden' });
@@ -93,13 +102,16 @@ router.delete('/:vaultId', async (req, res) => {
   try {
     const appUser = await getAppUser(suid);
     if (!appUser) return res.status(401).json({ error: 'App user not found' });
+    // SQL: SELECT * FROM vaults WHERE vault_id = $1;
     const { data, error } = await supa.from('vaults').select('*').eq('vault_id', vaultId);
     if (error) throw error;
     const v = data && data[0];
     if (!v) return res.status(404).json({ error: 'Vault not found' });
     if (v.user_id !== appUser.id) return res.status(403).json({ error: 'Forbidden' });
+    // SQL: DELETE FROM vaults WHERE vault_id = $1;
     const { error: delErr } = await supa.from('vaults').delete().eq('vault_id', vaultId);
     if (delErr) throw delErr;
+    // SQL: INSERT INTO audit_logs (vault_id, user_id, action) VALUES ($1, $2, 'vault_deleted');
     await supa.from('audit_logs').insert([{ vault_id: vaultId, user_id: appUser.id, action: 'vault_deleted' }]);
     return res.status(204).send();
   } catch (err) {
