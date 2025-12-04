@@ -57,7 +57,7 @@ router.get('/metrics', async (req, res) => {
       return Array.from(m.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([day, count]) => ({ day, count }));
     }
 
-    // Totals
+  // Totals
     const totals = {
       users: users.length,
       vaults: vaults.length,
@@ -97,20 +97,48 @@ router.get('/metrics', async (req, res) => {
     }
     const passwordEntryFieldStats = { withWebsite, withUsername, withPasswordCipher };
 
-    // Activity series
+  // Activity series
     const vaultsPerDay = bucketByDay(vaults, 'created_at');
     const itemsPerDay = bucketByDay(items, 'date_created');
     const eventsPerDay = bucketByDay(audits, 'timestamp');
+
+  // Additional series: users registered per day
+  const usersPerDay = bucketByDay(users, 'created_at');
 
     // Actions breakdown
     const actionsMap = new Map();
     for (const ev of audits) actionsMap.set(ev.action || 'unknown', (actionsMap.get(ev.action || 'unknown') || 0) + 1);
     const actions = Array.from(actionsMap.entries()).map(([action, count]) => ({ action, count })).sort((a, b) => b.count - a.count);
 
+    // Stacked actions by day: { day, actionCounts: {create: n, update: m, ...} }
+    const actionsByDayMap = new Map();
+    for (const ev of audits) {
+      const d = new Date(ev.timestamp);
+      if (isNaN(d.getTime()) || d < since30) continue;
+      const day = d.toISOString().slice(0, 10);
+      const key = ev.action || 'unknown';
+      const row = actionsByDayMap.get(day) || {};
+      row[key] = (row[key] || 0) + 1;
+      actionsByDayMap.set(day, row);
+    }
+    const actionsByDay = Array.from(actionsByDayMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([day, actionCounts]) => ({ day, actionCounts }));
+
     // Top active users by events
     const eventsByUserMap = new Map();
     for (const ev of audits) { if (ev.user_id) eventsByUserMap.set(ev.user_id, (eventsByUserMap.get(ev.user_id) || 0) + 1); }
     const topUsersByEvents = Array.from(eventsByUserMap.entries()).map(([user_id, count]) => ({ user_id, count })).sort((a, b) => b.count - a.count).slice(0, 15);
+
+    // Events per role (using users table to map user_id -> role)
+    const userRoleMap = new Map();
+    for (const u of users) userRoleMap.set(u.id, u.role);
+    const eventsPerRoleMap = new Map();
+    for (const ev of audits) {
+      const role = userRoleMap.get(ev.user_id) || 'unknown';
+      eventsPerRoleMap.set(role, (eventsPerRoleMap.get(role) || 0) + 1);
+    }
+    const eventsPerRole = Array.from(eventsPerRoleMap.entries()).map(([role, count]) => ({ role, count }));
 
     // Recent events
     const recentEvents = audits.slice().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 50);
@@ -119,10 +147,12 @@ router.get('/metrics', async (req, res) => {
       totals,
       roles,
       itemTypes: itemTypeCounts,
-      series: { vaultsPerDay, itemsPerDay, eventsPerDay },
+      series: { vaultsPerDay, itemsPerDay, eventsPerDay, usersPerDay },
       distributions: { vaultsPerUser, itemsPerVaultTop, itemsStats },
       passwordEntryFieldStats,
       actions,
+      actionsByDay,
+      eventsPerRole,
       topUsersByEvents,
       recentEvents
     });
